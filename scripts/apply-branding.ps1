@@ -37,7 +37,9 @@ if ($Blueprints) {
     # Package name, vendor and the executable allow-list of blacklist.txt.
     $bp = Get-ChildItem $Blueprints -Recurse -File -Filter 'nextcloud-client.py' | Where-Object { $_.Directory.Name -eq 'nextcloud-client' }
     if (@($bp).Count -ne 1) { Fail "expected one nextcloud-client.py under $Blueprints, found $(@($bp).Count)" }
+    # createPackage() uses os.path without importing os (stable-35.0).
     Replace-Exact $bp.FullName @(
+        "`nimport info", "`nimport os`nimport info"
         'self.defines["appname"] = "nextcloud"', 'self.defines["appname"] = "opendrive"'
         'self.defines["company"] = "Nextcloud GmbH"', 'self.defines["company"] = "OpenSys"'
         'self.applicationExecutable = "nextcloud"', 'self.applicationExecutable = "opendrive"'
