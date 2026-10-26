@@ -14,7 +14,8 @@ set( APPLICATION_ICON_NAME  "OpenDrive" )
 set( APPLICATION_CONFIG_NAME "${APPLICATION_EXECUTABLE}" )
 set( APPLICATION_DOMAIN     "opensysid.com" )
 set( APPLICATION_VENDOR     "OpenSys" )
-set( APPLICATION_UPDATE_URL "" CACHE STRING "URL for updater" )
+# Must not be empty: theme.cpp uses it even without the updater (BUILD_UPDATER OFF, never called).
+set( APPLICATION_UPDATE_URL "https://files.opensysid.com/" CACHE STRING "URL for updater" )
 set( APPLICATION_HELP_URL   "https://files.opensysid.com/" CACHE STRING "URL for the help menu" )
 
 set( APPLICATION_ICON_SET   "SVG" )
