@@ -1,0 +1,200 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Based on .github/workflows/windows-build-and-test.yml of nextcloud/desktop.
+name: Build OpenDrive (Windows)
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: OpenDrive MSI
+    runs-on: windows-2022
+    timeout-minutes: 340
+    env:
+      CRAFT_TARGET: windows-msvc2022_64-cl
+      CRAFT_MASTER_LOCATION: ${{ github.workspace }}\CraftMaster
+      CRAFT_MASTER_CONFIG: ${{ github.workspace }}\src\craftmaster.ini
+      PYTHON_VERSION: '3.12'
+      SRC_DIR: ${{ github.workspace }}\src
+      OUT_DIR: ${{ github.workspace }}\out
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: overlay
+          fetch-depth: 1
+
+      - name: Read upstream ref
+        id: upstream
+        shell: pwsh
+        run: |
+          $line = Get-Content overlay\UPSTREAM | Where-Object { $_ -match '^ref=' }
+          $ref = ($line -split '=', 2)[1].Trim()
+          if (-not $ref) { throw 'UPSTREAM has no ref' }
+          "ref=$ref" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nextcloud/desktop
+          ref: ${{ steps.upstream.outputs.ref }}
+          path: src
+          fetch-depth: 1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Apply OpenDrive branding
+        shell: pwsh
+        run: overlay\scripts\apply-branding.ps1 -Source "$env:SRC_DIR"
+
+      - name: Resolve Craft dependency revisions
+        id: craft-revisions
+        shell: pwsh
+        run: |
+          function configValue($key) {
+              $escapedKey = [regex]::Escape($key)
+              $matches = @(Select-String -Path "${{ env.CRAFT_MASTER_CONFIG }}" -Pattern "^\s*$escapedKey\s*=\s*(.+?)\s*$")
+              if($matches.Count -ne 1) {
+                  throw "Expected exactly one $key value in craftmaster.ini."
+              }
+              return $matches[0].Matches[0].Groups[1].Value.Trim()
+          }
+
+          $craftRevision = configValue "CraftRevision"
+          $kdeBlueprintRef = configValue "craft/craft-blueprints-kde.revision"
+          $nextcloudBlueprintRef = configValue "craft/craft-blueprints-nextcloud.revision"
+
+          function remoteRevision($repository, $ref) {
+              $revision = git ls-remote $repository $ref
+              if($LASTEXITCODE -ne 0 -or !$revision) {
+                  throw "Could not resolve $ref from $repository."
+              }
+              return ($revision -split '\s+')[0]
+          }
+
+          $kdeBlueprintRevision = remoteRevision "https://github.com/nextcloud/craft-blueprints-kde.git" "refs/heads/$kdeBlueprintRef"
+          $nextcloudBlueprintRevision = remoteRevision "https://github.com/nextcloud/craft-blueprints-nextcloud.git" "refs/heads/$nextcloudBlueprintRef"
+          @(
+              "kde_ref=$kdeBlueprintRef"
+              "nextcloud_ref=$nextcloudBlueprintRef"
+              "craft_rev=$craftRevision"
+              "kde_rev=$kdeBlueprintRevision"
+              "nextcloud_rev=$nextcloudBlueprintRevision"
+              "key=$craftRevision-$kdeBlueprintRevision-$nextcloudBlueprintRevision"
+          ) | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Corresponding source (GPL)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force $env:OUT_DIR | Out-Null
+          $commit = git -C src rev-parse HEAD
+          $overlayCommit = git -C overlay rev-parse HEAD
+          @(
+            "upstream=https://github.com/nextcloud/desktop"
+            "upstream_ref=${{ steps.upstream.outputs.ref }}"
+            "upstream_commit=$commit"
+            "overlay=${{ github.server_url }}/${{ github.repository }}"
+            "overlay_commit=$overlayCommit"
+            "craft=https://github.com/nextcloud/craft.git@${{ steps.craft-revisions.outputs.craft_rev }}"
+            "craft_blueprints_kde=https://github.com/nextcloud/craft-blueprints-kde.git@${{ steps.craft-revisions.outputs.kde_rev }}"
+            "craft_blueprints_nextcloud=https://github.com/nextcloud/craft-blueprints-nextcloud.git@${{ steps.craft-revisions.outputs.nextcloud_rev }}"
+          ) | Set-Content -Path src\OPENDRIVE-SOURCE.txt -Encoding ascii
+          Copy-Item src\OPENDRIVE-SOURCE.txt "$env:OUT_DIR\OPENDRIVE-SOURCE.txt"
+          7z a -tzip "$env:OUT_DIR\opendrive-desktop-source.zip" .\src .\overlay '-xr!.git' | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore Craft dependencies
+        id: craft-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ env.CRAFT_MASTER_LOCATION }}
+            ${{ github.workspace }}\craft-clone
+            ${{ github.workspace }}\${{ env.CRAFT_TARGET }}
+          key: ${{ runner.os }}-craft-v1-${{ env.CRAFT_TARGET }}-python-${{ env.PYTHON_VERSION }}-${{ steps.craft-revisions.outputs.key }}
+
+      - name: Install Craft Master with client deps
+        if: steps.craft-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          & cmd /C "git clone -q --depth=1 https://invent.kde.org/packaging/craftmaster.git ${{ env.CRAFT_MASTER_LOCATION }} 2>&1"
+
+          function craft() {
+              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
+              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
+          }
+
+          craft --add-blueprint-repository "https://github.com/nextcloud/craft-blueprints-kde.git|${{ steps.craft-revisions.outputs.kde_ref }}|"
+          craft --add-blueprint-repository "https://github.com/nextcloud/craft-blueprints-nextcloud.git|${{ steps.craft-revisions.outputs.nextcloud_ref }}|"
+          craft craft
+          craft --install-deps nextcloud-client
+
+      - name: Save Craft dependencies
+        if: steps.craft-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ env.CRAFT_MASTER_LOCATION }}
+            ${{ github.workspace }}\craft-clone
+            ${{ github.workspace }}\${{ env.CRAFT_TARGET }}
+          key: ${{ runner.os }}-craft-v1-${{ env.CRAFT_TARGET }}-python-${{ env.PYTHON_VERSION }}-${{ steps.craft-revisions.outputs.key }}
+
+      - name: Brand the Craft blueprint
+        shell: pwsh
+        run: overlay\scripts\apply-branding.ps1 -Blueprints "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\etc"
+
+      - name: Install WiX 3 and Inkscape
+        shell: pwsh
+        run: |
+          if (-not $env:WIX) {
+              choco install wixtoolset -y --no-progress
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              $wix = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter 'WiX Toolset v3*' | Select-Object -Last 1
+              if (-not $wix) { throw 'WiX Toolset v3 not found after install' }
+              "WIX=$($wix.FullName)\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          choco install inkscape -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Setup PATH
+        shell: pwsh
+        run: |
+          echo "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Compile
+        shell: pwsh
+        run: |
+          function craft() {
+              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
+              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
+          }
+
+          craft --src-dir "$env:SRC_DIR" nextcloud-client
+          craft --src-dir "$env:SRC_DIR" --package nextcloud-client
+
+      - name: Build MSI
+        shell: pwsh
+        run: overlay\scripts\make-msi.ps1 -CraftRoot "${{ github.workspace }}\${{ env.CRAFT_TARGET }}" -OutDir "$env:OUT_DIR"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opendrive-windows
+          path: ${{ env.OUT_DIR }}
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" (Get-ChildItem $env:OUT_DIR -File).FullName --repo "${{ github.repository }}" --title "OpenDrive ${{ github.ref_name }}" --notes "Built from nextcloud/desktop ${{ steps.upstream.outputs.ref }}. Source: opendrive-desktop-source.zip (GPL-2.0-or-later)."
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="-32 -32 320 320">
+  <defs>
+    <linearGradient id="od" gradientUnits="userSpaceOnUse" x1="40" y1="40" x2="216" y2="216">
+      <stop offset="0" stop-color="#8E36F0"/>
+      <stop offset="0.5" stop-color="#E0607E"/>
+      <stop offset="1" stop-color="#FFB619"/>
+    </linearGradient>
+    <linearGradient id="odr" gradientUnits="userSpaceOnUse" x1="40" y1="128" x2="216" y2="128">
+      <stop offset="0" stop-color="#8E36F0"/>
+      <stop offset="0.5" stop-color="#E0607E"/>
+      <stop offset="1" stop-color="#FFB619"/>
+    </linearGradient>
+  </defs>
+  <rect x="40" y="40" width="176" height="176" rx="30" fill="url(#odr)" transform="rotate(45 128 128)"/>
+  <g fill="#FFFFFF">
+    <circle cx="98" cy="130" r="25"/>
+    <circle cx="128" cy="110" r="33"/>
+    <circle cx="160" cy="128" r="27"/>
+    <rect x="73" y="128" width="114" height="27" rx="13.5"/>
+  </g>
+  <g fill="none" stroke="url(#od)" stroke-width="7" stroke-linecap="round">
+    <circle cx="128" cy="138" r="15"/>
+    <line x1="128" y1="123" x2="128" y2="100"/>
+  </g>
+  <path d="M114 104 L128 84 L142 104 Z" fill="url(#od)"/>
+  <path d="M121 138 L121 160 L110 160 L128 180 L146 160 L135 160 L135 138 Z" fill="#FFFFFF" stroke="url(#od)" stroke-width="4" stroke-linejoin="round"/>
+</svg>
