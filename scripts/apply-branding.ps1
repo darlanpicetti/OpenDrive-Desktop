@@ -97,7 +97,19 @@ foreach ($f in $files) {
 # 3. Start menu tile manifest is named after APPLICATION_EXECUTABLE.
 if (-not (Test-Path (Join-Path $Source 'theme\opendrive.VisualElementsManifest.xml'))) { Fail 'theme\opendrive.VisualElementsManifest.xml missing from overlay' }
 
-# 4. Craft settings: no tests; portable package, whose archive tree feeds make-msi.bat.
+# 4. Hide Nextcloud marketing buttons on the login page (open nextcloud.com / docs.nextcloud.com).
+$wizard = Join-Path $Source 'src\gui\wizard\qml\AccountWizardWindow.qml'
+$qml = [IO.File]::ReadAllText($wizard)
+foreach ($label in @('Sign up', 'Self-host')) {
+    $pat = '(WizardButton \{[ \t]*\r?\n[ \t]*visible: )root\.controller && root\.controller\.currentStep === AccountWizardController\.ServerStep(\r?\n[ \t]*enabled: root\.controller && !root\.controller\.busy\r?\n[ \t]*text: qsTr\("' + [regex]::Escape($label) + '"\))'
+    $next = [regex]::Replace($qml, $pat, '${1}false${2}', 1)
+    if ($next -eq $qml) { Fail "wizard button '$label' not found in AccountWizardWindow.qml" }
+    $qml = $next
+}
+Write-KeepEncoding $wizard $qml
+Write-Host 'qml: Sign up / Self-host hidden'
+
+# 5. Craft settings: no tests; portable package, whose archive tree feeds make-msi.bat.
 Replace-Exact (Join-Path $Source 'craftmaster.ini') @(
     'nextcloud-client.buildTests = True', 'nextcloud-client.buildTests = False'
     'Packager/PackageType = NullsoftInstallerPackager', 'Packager/PackageType = PortablePackager'
