@@ -108,7 +108,7 @@ jobs:
             "craft_blueprints_nextcloud=https://github.com/nextcloud/craft-blueprints-nextcloud.git@${{ steps.craft-revisions.outputs.nextcloud_rev }}"
           ) | Set-Content -Path src\OPENDRIVE-SOURCE.txt -Encoding ascii
           Copy-Item src\OPENDRIVE-SOURCE.txt "$env:OUT_DIR\OPENDRIVE-SOURCE.txt"
-          7z a -tzip "$env:OUT_DIR\opendrive-desktop-source.zip" .\src .\overlay '-xr!.git' | Out-Null
+          7z a -tzip "$env:OUT_DIR\opendrive-desktop-source.zip" .\src .\overlay '-xr!.git' -snl | Out-Null
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Restore Craft dependencies

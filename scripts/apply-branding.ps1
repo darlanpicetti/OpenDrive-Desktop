@@ -79,8 +79,9 @@ foreach ($old in 'E314A650-DCA4-416E-974E-18EA37C213EA', '1E62D59A-6EA4-476C-B70
     if (([regex]::Matches($cmakeLists, $old, 'IgnoreCase')).Count -ne 1) { Fail "CfApi GUID $old not found exactly once in CMakeLists.txt" }
 }
 $textExt = '.txt', '.cmake', '.in', '.h', '.hpp', '.cpp', '.c', '.idl', '.def', '.rc', '.wxs', '.wxi', '.xml', '.manifest', '.reg', '.json', '.py', '.ps1', '.bat', '.js', '.vbs', '.xsl'
+# Symlinks are skipped: on the runner Git creates real links, some pointing to macOS-only paths.
 $files = Get-ChildItem $Source -Recurse -File |
-    Where-Object { $_.FullName -notmatch '\\\.git\\' -and $textExt -contains $_.Extension.ToLower() }
+    Where-Object { $_.FullName -notmatch '\\\.git\\' -and $textExt -contains $_.Extension.ToLower() -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) }
 foreach ($f in $files) {
     $text = [IO.File]::ReadAllText($f.FullName)
     $new = $text
