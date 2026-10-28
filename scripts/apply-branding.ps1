@@ -25,10 +25,14 @@ function Write-KeepEncoding($path, $text) {
 
 function Replace-Exact($path, [string[]]$pairs) {
     $text = [IO.File]::ReadAllText($path)
+    $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
     for ($i = 0; $i -lt $pairs.Count; $i += 2) {
-        $count = ([regex]::Matches($text, [regex]::Escape($pairs[$i]))).Count
-        if ($count -ne 1) { Fail "$(Split-Path $path -Leaf): '$($pairs[$i])' found $count times, expected 1" }
-        $text = $text.Replace($pairs[$i], $pairs[$i + 1])
+        $from = ($pairs[$i] -replace "`r`n", "`n").Replace("`n", $nl)
+        $to = ($pairs[$i + 1] -replace "`r`n", "`n").Replace("`n", $nl)
+        $count = ([regex]::Matches($text, [regex]::Escape($from))).Count
+        $hint = ($from -split $nl)[0].Trim()
+        if ($count -ne 1) { Fail "$(Split-Path $path -Leaf): '$hint' found $count times, expected 1" }
+        $text = $text.Replace($from, $to)
     }
     Write-KeepEncoding $path $text
 }
@@ -108,6 +112,69 @@ foreach ($label in @('Sign up', 'Self-host')) {
 }
 Write-KeepEncoding $wizard $qml
 Write-Host 'qml: Sign up / Self-host hidden'
+
+# 4b. ADR-0085: do not open the login wizard or Settings; quit when no account remains (wipe).
+Replace-Exact (Join-Path $Source 'src\gui\application.cpp') @(
+    @"
+    // if there is no more account, show the wizard.
+    if (_gui && AccountManager::instance()->accounts().isEmpty()) {
+        // allow to add a new account if there is non any more. Always think
+        // about single account theming!
+        OwncloudSetupWizard::runWizard(this, SLOT(slotownCloudWizardDone(int)));
+    }
+"@,
+    @"
+    // OpenSysID ADR-0085: no login wizard. Account comes from Windows logon.
+    if (_gui && AccountManager::instance()->accounts().isEmpty()) {
+        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+    }
+"@,
+    @"
+        // let gui open the setup wizard
+        _gui->slotOpenSettingsDialog();
+
+        _checkConnectionTimer.stop(); // don't popup the wizard on interval;
+"@,
+    @"
+        // OpenSysID ADR-0085: no login wizard
+        _checkConnectionTimer.stop();
+        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+"@
+)
+Replace-Exact (Join-Path $Source 'src\gui\owncloudgui.cpp') @(
+    @"
+void ownCloudGui::slotNewAccountWizard()
+{
+#if defined ENFORCE_SINGLE_ACCOUNT
+    if (!AccountManager::instance()->accounts().isEmpty()) {
+        return;
+    }
+#endif
+    OwncloudSetupWizard::runWizard(qApp, SLOT(slotownCloudWizardDone(int)), nullptr, true);
+}
+"@,
+    @"
+void ownCloudGui::slotNewAccountWizard()
+{
+    // OpenSysID ADR-0085: login is Windows logon, not this wizard.
+    return;
+}
+"@
+)
+Replace-Exact (Join-Path $Source 'src\gui\systray.cpp') @(
+    'this, [this]{ showTrayPopup(); });',
+    'this, [this]{ /* OpenSysID ADR-0085: no popup on accountAdded */ });',
+    @"
+    Q_UNUSED(position)
+
+    Q_EMIT openSettings();
+"@,
+    @"
+    Q_UNUSED(position)
+    // OpenSysID ADR-0085: Settings is not a product surface.
+"@
+)
+Write-Host 'cpp: no login wizard / no Settings on accountAdded'
 
 # 5. Craft settings: no tests; portable package, whose archive tree feeds make-msi.bat.
 Replace-Exact (Join-Path $Source 'craftmaster.ini') @(

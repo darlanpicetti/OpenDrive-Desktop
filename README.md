@@ -1,8 +1,8 @@
 # OpenDrive desktop (Windows)
 
-> **Status:** Proposto (2026-10-23). Primeira compilação ainda não rodou. Decisão: ADR-0079 do OpenSysID.
+> **Status:** Aceito (2026-10-26). Primeira compilação ok ([execução #5](https://github.com/darlanpicetti/OpenDrive-Desktop/actions/runs/40337927116)). Decisão: ADR-0079 do OpenSysID.
 
-OpenDrive é o cliente de sincronização de arquivos da estação OpenSysID. É o [cliente desktop do Nextcloud](https://github.com/nextcloud/desktop) com o código C++/QML intacto, compilado com marca e opções de compilação próprias. Este repositório guarda **só** a camada de marca e a compilação. O código-fonte é o do Nextcloud, na tag indicada em `UPSTREAM`.
+OpenDrive é o cliente de sincronização de arquivos da estação OpenSysID. É o [cliente desktop do Nextcloud](https://github.com/nextcloud/desktop) compilado com marca própria. Este repositório guarda **só** a camada de marca, os retoques de UI ([ADR-0085](../../docs/02-decisions/ADR-0085-opendrive-no-ui-in-build.md): sem assistente de login) e a compilação. O motor de sincronização é o do Nextcloud, na tag indicada em `UPSTREAM`.
 
 Licença: GPL-2.0-or-later, a mesma do cliente original (`COPYING`). Nextcloud é marca da Nextcloud GmbH. OpenDrive não é produto da Nextcloud GmbH nem é endossado por ela.
 
@@ -16,6 +16,7 @@ Licença: GPL-2.0-or-later, a mesma do cliente original (`COPYING`). Nextcloud �
 | Contas | uma só; arquivos virtuais (Cloud Files) obrigatórios |
 | Atualizador | desligado (a versão vem do hub do OpenSysID) |
 | Importar conta de um Nextcloud instalado | desligado |
+| Login na estação | nenhum: a conta nasce no logon Windows. A compilação não abre assistente nem Settings ([ADR-0085](../../docs/02-decisions/ADR-0085-opendrive-no-ui-in-build.md)); o agente fecha o processo sem conta ([ADR-0083](../../docs/02-decisions/ADR-0083-opendrive-no-login-ui.md)) |
 | Certificado TLS inválido | recusado, sem opção de aceitar |
 | GUIDs do Explorer e do MSI | próprios: OpenDrive e Nextcloud podem coexistir na estação |
 | Ícones, logo, bitmaps do instalador | `branding/` |
